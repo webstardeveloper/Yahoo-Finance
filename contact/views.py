@@ -88,4 +88,38 @@ def yahoo_search(request):
     return render_to_response('contact/yahoo_finance.html', locals(), context_instance=RequestContext(request))
 
 
+@login_required()
+def get_data(request):
+    data = dict()
+
+    # get data from user
+    data['siteid'] = getValue(request.GET, 'siteid')
+    data['name'] = getValue(request.GET, 'name')
+    data['title'] = getValue(request.GET, 'title')
+    data['company'] = getValue(request.GET, 'company')
+    data['location'] = getValue(request.GET, 'location')
+    data['site'] = getValue(request.GET, 'site')
+
+    lines = _getData(data)
+
+    # create csv file in static/data/
+    #if folder does not exist, create it
+    filename = "data_%s.csv" % random_word(10)
+    if not os.path.exists(os.path.join(settings.BASE_DIR, 'contact/static/data')):
+        os.makedirs(os.path.join(settings.BASE_DIR, 'contact/static/data'))
+
+    # open file
+    filepath = "%s/%s" % (os.path.join(settings.BASE_DIR, 'contact/static/data'), filename)
+    fp = open(filepath, "wb")
+
+    title = '"Input Siteid","Input Company","Input Title","Input Location","First Name","Last Name","Title",' + \
+            '"Company","Location","Location Full","Industry","linkedinurl","Current Company","Education","Date",' + \
+            '"Score","Location_Match","Company_Match","Description"\n'
+    fp.write(title)
+
+    fp.write(''.join(lines))
+    # print(res)
+
+    return HttpResponse(filename)
+
 

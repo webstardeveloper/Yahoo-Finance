@@ -73,4 +73,70 @@ class YahooSpider(scrapy.Spider):
 			request.meta['item'] = item
 			yield request
 			
+	# parse profile information and make a request for parse statistics data
+	def parse_profile(self, response):
+		# site error handling
+		if response.status in [553, 400, 404, 500]:
+			return 
+	
+		yahoo_finance = dict()
+		item = response.meta['item']
+		
+		# put input data into output data
+		yahoo_finance['Duns'] = item[0]
+		yahoo_finance['Street_Ticker'] = item[1]
+		
+		try:
+			yahoo_finance['Street_Exchange'] = item[2]
+		except:
+			yahoo_finance['Street_Exchange'] = "N/A"
+
+		# get time stamp
+		tz = timezone('EST')
+		datetime.now(tz) 
+		yahoo_finance["Time Stamp"] = datetime.now(tz).strftime("%a, %b %d, %Y, %I:%M%p") + " EDT"
+		
+		data = json.loads(response.body)
+
+		if data['quoteSummary']['result'] == None:
+			return
+		tp_profile = data['quoteSummary']['result'][0]['assetProfile']
+		
+		# get company profile
+		yahoo_finance['Street'] = self.check_value(tp_profile, 'address1')
+		
+		keys = ['City', 'State', 'Zip', 'Country', 'Phone', 'Website', 'Sector', 'Industry']
+		for attr in keys:
+			yahoo_finance[attr] = self.check_value(tp_profile, attr.lower())
+		yahoo_finance['Full Time Employees'] = self.check_value(tp_profile, 'fullTimeEmployees')
+		
+		# get company offers
+		offers = tp_profile['companyOfficers']
+		tp_offers = []
+		for offer in offers:
+			tp_offer = []
+			tp_offer.append(self.check_value(offer, 'name'))
+			tp_offer.append(self.check_value(offer, 'age'))
+			tp_offer.append(self.check_value(offer, 'title'))
+			try:
+				tp_offer.append(self.check_value(offer['totalPay'], 'fmt'))
+			except:
+				tp_offer.append("N/A")
+
+			try:
+				tp_offer.append(self.check_value(offer['exercisedValue'], 'fmt'))
+			except:
+				tp_offer.append("N/A")
+			
+			tp_offers.append(tp_offer)
+			
+		yahoo_finance['offers'] = tp_offers
+					
+		# make a request for parse statistics data
+		url = self.search_url.replace("Street_Ticker", yahoo_finance['Street_Ticker'])
+		request = scrapy.Request(url, callback=self.parse_statistics)
+		request.meta['yahoo_finance'] = yahoo_finance
+		request.meta['item'] = response.meta['item']
+		yield request
+	
 	

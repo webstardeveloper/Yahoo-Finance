@@ -179,7 +179,99 @@ class YahooSpider(scrapy.Spider):
 		request.meta['item'] = response.meta['item']
 		yield request
 			
+	# parse statistics data and save all data into csv file
+	def parse_detail_statistics(self, response):
+		# site error handling
+		if response.status in [553, 400, 404, 500]:
+			return
 	
+		yahoo_finance = response.meta['yahoo_finance']
+		data = json.loads(response.body)
+
+		try:
+			tagert = data['quoteSummary']['result'][0]
+			for key in tagert['defaultKeyStatistics'].keys():
+				if key == "priceToSalesTrailing12Months":
+					continue
+				else:
+					yahoo_finance['statistics'][key] = tagert['defaultKeyStatistics'][key]
+			for key in tagert['financialData'].keys():
+				yahoo_finance['statistics'][key] = tagert['financialData'][key]
+			for key in tagert['calendarEvents'].keys():
+				if key == "earnings":
+					for sub_key in tagert['calendarEvents']['earnings'].keys():
+						yahoo_finance['statistics'][sub_key] = tagert['calendarEvents']['earnings'][sub_key]
+				else:
+					yahoo_finance['statistics'][key] = tagert['calendarEvents'][key]
+			
+		except:
+			pass
+		
+		self.save_data_csv(yahoo_finance)
+		
+	# save data in csv file
+	def save_data_csv(self, data):
+		prefix = []
+		for key in self.header[:16]:
+			prefix.append(self.remove_char(data, key))
+		prefix = ','.join(prefix)
+			
+		statistics_keys = ['marketCap', 'enterpriseValue', 'start_date', 'trailingEps', 'forwardPE', 'end_date', 'pegRatio',\
+								'priceToSalesTrailing12Months', 'priceToBook', 'enterpriseToRevenue', 'enterpriseToEbitda', 'lastFiscalYearEnd', 'mostRecentQuarter', \
+								'profitMargins', 'operatingMargins', 'returnOnAssets', 'returnOnEquity', 'totalRevenue', 'revenuePerShare', 'revenueGrowth', \
+								'grossProfits', 'ebitda' , 'netIncomeToCommon' ,'trailingEps', 'earningsQuarterlyGrowth', 'totalCash', 'totalCashPerShare', \
+								'totalDebt', 'debtToEquity', 'currentRatio', 'bookValue', 'operatingCashflow', 'freeCashflow', 'beta', '52WeekChange', \
+								'SandP52WeekChange', 'fiftyTwoWeekHigh', 'fiftyTwoWeekLow', 'fiftyDayAverage', 'twoHundredDayAverage', 'averageVolume', \
+								'averageDailyVolume10Day', 'sharesOutstanding', 'floatShares', 'heldPercentInsiders', 'heldPercentInstitutions', 'sharesShort', \
+								'shortRatio', 'shortPercentOfFloat', 'sharesShortPriorMonth', 'dividendRate', 'dividendYield', 'trailingAnnualDividendRate', \
+								'trailingAnnualDividendYield', 'fiveYearAvgDividendYield', 'payoutRatio', 'dividendDate', 'exDividendDate', 'lastSplitFactor',\
+								'lastSplitDate']
+			
+		suffix = []
+		for key in statistics_keys:
+			if key == 'start_date':
+				if len(data['statistics']['earningsDate']) > 0:
+					temp = self.remove_char(data['statistics']['earningsDate'][0], 'fmt')
+				else:
+					temp = "N/A"
+			elif key == 'end_date':
+				try:
+					temp = self.remove_char(data['statistics']['earningsDate'][1], 'fmt')
+				except:
+					if len(data['statistics']['earningsDate']) > 0:
+						temp = self.remove_char(data['statistics']['earningsDate'][0], 'fmt')
+					else:
+						temp = "N/A"
+			elif key == "lastSplitFactor":
+				temp = self.remove_char(data['statistics'], key)
+			else:
+				try:
+					temp = self.remove_char(data['statistics'][key], 'fmt')
+				except:
+					temp = "N/A"
+				
+				
+				
+			suffix.append(temp)
+			
+		suffix = ','.join(suffix)
+		
+		for offer in data['offers']:
+			offer = [self.remove_char(item) for item in offer]
+			line = "%s,%s,%s\n" % (prefix, ','.join(offer), suffix)
+			
+			self.out_fp.write(line.encode("utf8"))
+		pass
+	
+	# check if a key is in dictionary
+	def check_value(self, dict, key):
+		try:
+			value = dict[key]
+			if value == None:
+				return "0"
+			return value
+		except:
+			return "N/A"
 			
 	# validate the value of html node
 	#	return string value, if data is validated

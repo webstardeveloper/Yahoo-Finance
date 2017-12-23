@@ -139,4 +139,74 @@ class YahooSpider(scrapy.Spider):
 		request.meta['item'] = response.meta['item']
 		yield request
 	
+	# parse statistics data and save all data into csv file
+	def parse_statistics(self, response):
+		# site error handling
+		if response.status in [553, 400, 404, 500]:
+			# make a request to parse profile information.
+			request = scrapy.Request(response.url, callback=self.parse_profile)
+			request.meta['item'] = response.meta['item']
+			yield request
+			return
 	
+		yahoo_finance = response.meta['yahoo_finance']
+		yahoo_finance['statistics'] = dict()
+		
+		statistics = OrderedDict()
+			
+		yahoo_finance['Company'] = self.validate(response.xpath("//div[@id='quote-header-info']//h6/text()"))
+		yahoo_finance['en_date'] = self.validate(response.xpath("//div[@id='quote-header-info']//p[1]//span[4]//span[2]/text()")).split(",")[0]
+		
+		try:
+			detail_statistices = response.body.split("root.App.main =")[1]
+			detail_statistices = detail_statistices.split('\n')[0]
+			detail_statistices = json.loads(detail_statistices[:-1])
+		
+			tp_detail = detail_statistices['context']['dispatcher']['stores']['QuoteSummaryStore']
+			
+			for key in tp_detail['price'].keys():
+				yahoo_finance['statistics'][key] = tp_detail['price'][key]
+			for key in tp_detail['summaryDetail'].keys():
+				yahoo_finance['statistics'][key] = tp_detail['summaryDetail'][key]
+				
+		except:
+			pass
+			
+		# make a request for parse statistics data
+		url = self.statistics_url[0] + yahoo_finance['Street_Ticker'] + self.statistics_url[1]
+		request = scrapy.Request(url, callback=self.parse_detail_statistics)
+		request.meta['yahoo_finance'] = yahoo_finance
+		request.meta['item'] = response.meta['item']
+		yield request
+			
+	
+			
+	# validate the value of html node
+	#	return string value, if data is validated
+	#	return "", otherwise
+	def validate(self, node):
+		if len(node) > 0:
+			temp = node[0].extract().strip().encode("utf8")
+			return temp
+		else:	
+			return "N/A"
+			
+	def remove_char(self, dict, key=""):
+
+		try:
+			if key == "":
+				try:
+					value = str(dict)
+				except:
+					value = dict
+			elif key in dict:
+				value = str(dict[key])
+			
+			else:
+				value = "N/A"
+		except:
+			value = "N/A"
+		
+		value = value.replace(",", " ")
+		value = value.replace("\"", " ")
+		return "\"" + value + "\""
